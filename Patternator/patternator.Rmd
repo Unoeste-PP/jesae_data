@@ -11,11 +11,14 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 library(tidyverse)
+library(tidymodels)
 ```
 
 ```{r}
 patern <- read_csv("patternator_data.csv") %>% 
-  janitor::clean_names()
+  janitor::clean_names() %>% 
+  mutate_if(is_character, as_factor) %>% 
+  mutate_at(c("nozzle_spacing", "boom_height", "pressure"), as_factor)
 ```
 
 ```{r}
@@ -25,9 +28,115 @@ patern %>%
     cv > 10 & cv <= 15 ~ "okay",
     TRUE               ~ "bad"
   )) %>% 
-  ggplot(aes(x = solution_name, y = cv)) +
+  ggplot(aes(x = solution_name, y = cv, shape = pressure)) +
   geom_jitter(aes(color = cv_type)) +
-  facet_grid(pressure ~ nozzle) +
+  facet_grid(nozzle_spacing ~ nozzle) +
   coord_flip()
+```
+
+```{r}
+patern %>% 
+  ggplot(aes(x = surface_tension, y = cv, 
+             color = nozzle,
+             shape = nozzle_spacing)) +
+  geom_jitter()
+```
+
+```{r}
+points <- 
+  patern %>% 
+  select(surface_tension, cv)
+```
+
+
+```{r}
+kclust <- kmeans(points, centers = 3)
+kclust
+```
+
+```{r}
+summary(kclust)
+```
+
+```{r}
+augment(kclust, points)
+```
+
+```{r}
+tidy(kclust)
+```
+
+```{r}
+glance(kclust)
+```
+
+```{r}
+kclusts <- 
+  tibble(k = 1:9) %>%
+  mutate(
+    kclust = map(k, ~kmeans(points, .x)),
+    tidied = map(kclust, tidy),
+    glanced = map(kclust, glance),
+    augmented = map(kclust, augment, points)
+  )
+```
+
+```{r}
+clusters <- 
+  kclusts %>%
+  unnest(cols = c(tidied))
+
+assignments <- 
+  kclusts %>% 
+  unnest(cols = c(augmented))
+
+clusterings <- 
+  kclusts %>%
+  unnest(cols = c(glanced))
+```
+```{r}
+p1 <- 
+  ggplot(assignments, aes(x = surface_tension, y = cv)) +
+  geom_point(aes(color = .cluster), alpha = 0.8) + 
+  facet_wrap(~ k)
+p1
+```
+
+```{r}
+p2 <- p1 + geom_point(data = clusters, size = 10, shape = "x")
+p2
+```
+
+```{r}
+ggplot(clusterings, aes(k, tot.withinss)) +
+  geom_line() +
+  geom_point() +
+  geom_label(aes(label = round(tot.withinss, 0))) +
+  scale_x_continuous(n.breaks = 9)
+```
+
+```{r}
+patern %>% 
+  ggplot(aes(x = surface_tension, y = cv, 
+             color = nozzle,
+             shape = nozzle_spacing)) +
+  geom_jitter()
+```
+
+
+
+```{r}
+kclusts_4 <- kclusts %>% 
+  filter(k == 3) %>% 
+  unnest(augmented) %>% 
+  select(surface_tension, cv, .cluster) %>% 
+  left_join(patern, by = c("surface_tension", "cv"))
+```
+
+```{r}
+kclusts_4 %>% 
+  ggplot(aes(x = surface_tension, y = cv, color = .cluster)) +
+           geom_point() +
+  facet_grid(nozzle ~ pressure)
 ```
 
