@@ -1,0 +1,33 @@
+---
+title: "patternator"
+author: "Maxwel Coura Oliveira"
+date: "2/22/2021"
+output: html_document
+---
+# random forest
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+patern <- read_csv("patternator_data.csv") %>% 
+  janitor::clean_names()
+```
+
+```{r}
+patern %>% 
+  mutate(cv_type = case_when(
+    cv <= 10           ~ "good",
+    cv > 10 & cv <= 15 ~ "okay",
+    TRUE               ~ "bad"
+  )) %>% 
+  ggplot(aes(x = solution_name, y = cv)) +
+  geom_jitter(aes(color = cv_type)) +
+  facet_grid(pressure ~ nozzle) +
+  coord_flip()
+```
+

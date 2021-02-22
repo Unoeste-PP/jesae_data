@@ -1,0 +1,29 @@
+---
+title: "surface_tension"
+author: "Maxwel Coura Oliveira"
+date: "2/22/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+surface <- read_csv("dynamic surface tension_data.csv") %>% 
+  janitor::clean_names()
+```
+
+```{r}
+surface %>% 
+  filter(surface_tension < 2000) %>% 
+  ggplot(aes(x = seconds, y = surface_tension, color = solution_name)) +
+#  geom_jitter(alpha = 0.1) +
+  geom_smooth() +
+  facet_grid(temperature ~ humidity)
+```
+
