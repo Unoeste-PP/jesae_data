@@ -4,7 +4,7 @@ author: "Maxwel Coura Oliveira"
 date: "2/22/2021"
 output: html_document
 ---
-# random forest
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -50,7 +50,8 @@ points <-
 
 
 ```{r}
-kclust <- kmeans(points, centers = 3)
+set.seed(234)
+kclust <- kmeans(points, centers = 4)
 kclust
 ```
 
@@ -94,6 +95,8 @@ clusterings <-
   kclusts %>%
   unnest(cols = c(glanced))
 ```
+
+
 ```{r}
 p1 <- 
   ggplot(assignments, aes(x = surface_tension, y = cv)) +
@@ -118,25 +121,32 @@ ggplot(clusterings, aes(k, tot.withinss)) +
 ```{r}
 patern %>% 
   ggplot(aes(x = surface_tension, y = cv, 
-             color = nozzle,
-             shape = nozzle_spacing)) +
-  geom_jitter()
+             color = nozzle)) +
+  geom_jitter() +
+  geom_smooth(method = "lm")
 ```
 
 
 
 ```{r}
-kclusts_4 <- kclusts %>% 
-  filter(k == 3) %>% 
+kclusts_2 <- kclusts %>% 
+  filter(k == 2) %>% 
   unnest(augmented) %>% 
   select(surface_tension, cv, .cluster) %>% 
   left_join(patern, by = c("surface_tension", "cv"))
 ```
 
+
 ```{r}
-kclusts_4 %>% 
-  ggplot(aes(x = surface_tension, y = cv, color = .cluster)) +
+kclusts_2 %>% 
+  ggplot(aes(x = surface_tension, y = cv, color = nozzle)) +
            geom_point() +
-  facet_grid(nozzle ~ pressure)
+  geom_hline(yintercept = 15) +
+  facet_grid(boom_height ~ nozzle_spacing)
+```
+
+```{r}
+library(modeldb)
+plot_kmeans(kclusts_2, surface_tension, cv, group = .cluster, resolution = 40) 
 ```
 

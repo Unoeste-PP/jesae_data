@@ -14,7 +14,9 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r}
 library(tidyverse)
 library(tidymodels)
+library(ggtext)
 library(tidytext)
+library(ggthemes)
 ```
 
 
@@ -25,6 +27,8 @@ data <- read.csv("windtunnel_data.csv") %>%
   mutate(orifice_size = as_factor(orifice_size))
 ```
 
+
+
 ```{r}
 data %>% 
   ggplot(aes(x = pressure, dv50)) + 
@@ -34,100 +38,146 @@ data %>%
 ```
 
 
-```{r}
-data %>% 
-  group_by(nozzle) %>% 
-  nest()
-```
-
-
-
 ```{r linear-model}
 lm_mod <- 
   linear_reg() %>% 
   set_engine("lm")
 ```
 
+# Drifable fines
 
 ```{r}
-lm_fit <- 
+lm_fit_drift <- 
   lm_mod %>% 
   fit(fines_200 ~ solution_name * nozzle * orifice_size * pressure, data = data)
 ```
 
 
 ```{r}
-tidy(lm_fit)
+lm_fit_dv <- 
+  lm_mod %>% 
+  fit(dv50 ~ solution_name * nozzle * orifice_size * pressure, data = data)
 ```
 
+
+
 ```{r}
-new_points <- expand.grid(pressure = 40, 
-                          solution_name = c("water", 
-                                       "dicamba", 
-                                       "glyphosate", 
-                                       "dicamba+glyphosate",
-                                       "dicamba+glyphosate+dra2",
-                            "dicamba+glyphosate+clethodim+acetochlor+dra2",
-                            "dicamba+glyphosate+clethodim+dra2", 
-                            "dicamba+glyphosate+clethodim+dra2",
-                        "dicamba+glyphosate+clethodim+s-metolachlor+dra2",
-                        "dicamba+glyphosate+dra1",
-                        "dicamba+glyphosate+clethodim+dra1"), 
+new_points <- expand.grid(pressure = c(20, 40, 60),
+                          solution_name = 
+             str_c(unique(as.character(data$solution_name), 
+                          collapse = ", ")),
                         orifice_size = c("0.3", "0.4", "0.5", "0.6"),
                         nozzle = c("AI80", "AI110", "TADFD", "TDXLD",
-                                   "ULD", "TTI", "TADF"))
-new_points
+                                   "ULD", "TTI", "TADF")) %>% 
+  mutate(sol_number = as.numeric(solution_name)) %>% 
+  dplyr::select(sol_number, solution_name, everything())
 ```
+
 
 ```{r}
 #Getting predited values
-mean_pred <- predict(lm_fit, new_data = new_points)
-mean_pred
+mean_pred_drift <- predict(lm_fit_drift, new_data = new_points)
+mean_pred_dv <- predict(lm_fit_dv, new_data = new_points)
 ```
-
 
 
 ```{r}
 #Getting conf intervals
-conf_int_pred <- predict(lm_fit, 
+conf_int_pred_drift <- predict(lm_fit_drift, 
                          new_data = new_points, 
                          type = "conf_int")
-conf_int_pred
+
+
+conf_int_pred_dv <- predict(lm_fit_dv, 
+                         new_data = new_points, 
+                         type = "conf_int")
 ```
 
 
 ```{r}
-# Plotting biomass (% untreated) at GDD = 1000 (your choice)
 data1 <- 
   new_points %>% 
-  bind_cols(mean_pred) %>% 
-  bind_cols(conf_int_pred)
+  bind_cols(mean_pred_drift) %>% 
+  bind_cols(conf_int_pred_drift)
+
+data2 <- 
+  new_points %>% 
+  bind_cols(mean_pred_dv) %>% 
+  bind_cols(conf_int_pred_dv)
+
+data3 <- data1 %>% 
+  dplyr::select(.pred) %>% 
+  rename(driftable = .pred) %>% 
+  bind_cols(data2)
+```
+
+
+```{r}
+data4 <- data3 %>% 
+         mutate(solution_name = fct_relevel(solution_name, 
+                                  levels = c("water", 
+                                             "glyphosate", 
+                                             "dicamba", 
+                                             "dicamba+glyphosate",
+                                             "dicamba+glyphosate+dra1",
+                                             "dicamba+glyphosate+dra2", 
+                                             "dicamba+glyphosate+clethodim+dra1",
+                                             "dicamba+glyphosate+clethodim+dra2",
+                           "dicamba+glyphosate+clethodim+acetochlor+dra1",
+                           "dicamba+glyphosate+clethodim+acetochlor+dra2",
+                           "dicamba+glyphosate+clethodim+s-metolachlor+dra1",
+                           "dicamba+glyphosate+clethodim+s-metolachlor+dra2", 
+                           "dicamba+glyphosate+glufosinate",
+                           "dicamba+glyphosate+glufosinate+dra1",
+                           "dicamba+glyphosate+glufosinate+dra2",
+                           "dicamba+glyphosate+glufosinate+clethodim+dra1",
+                           "dicamba+glyphosate+glufosinate+clethodim+dra2"))) %>% 
+  mutate(solution_name = fct_recode(solution_name,
+                                  "water" = "water", 
+                                  "glyphosate" =  "glyphosate", 
+                                  "dicamba" =   "dicamba", 
+                                  "dicamba + glyphosate" = "dicamba+glyphosate",
+                                  "dicamba + glyphosate + DRA 1" = "dicamba+glyphosate+dra1",
+                                  "dicamba + glyphosate + DRA 2" = "dicamba+glyphosate+dra2", 
+                                  "dicamba + glyphosate + clethodim + DRA 1" = "dicamba+glyphosate+clethodim+dra1",
+                                  "dicamba + glyphosate + clethodim + DRA 2" = "dicamba+glyphosate+clethodim+dra2",
+                                  "dicamba + glyphosate + clethodim + acetochlor + DRA 1" = "dicamba+glyphosate+clethodim+acetochlor+dra1",
+                                  "dicamba + glyphosate + clethodim + acetochlor + DRA 2" = "dicamba+glyphosate+clethodim+acetochlor+dra2",
+                                  "dicamba + glyphosate + clethodim + *S*-metolachlor + DRA 1" = "dicamba+glyphosate+clethodim+s-metolachlor+dra1",
+                                  "dicamba + glyphosate + clethodim + *S*-metolachlor + DRA 2" = "dicamba+glyphosate+clethodim+s-metolachlor+dra2", 
+                                  "dicamba + glyphosate + glufosinate" = "dicamba+glyphosate+glufosinate",
+                                  "dicamba + glyphosate + glufosinate + DRA 1" = "dicamba+glyphosate+glufosinate+dra1",
+                                  "dicamba + glyphosate + glufosinate + DRA 2" = "dicamba+glyphosate+glufosinate+dra2",
+                                  "dicamba + glyphosate + glufosinate + clethodim+ DRA 1" = "dicamba+glyphosate+glufosinate+clethodim+dra1",
+                                  "dicamba + glyphosate + glufosinate + clethodim + DRA 2" = "dicamba+glyphosate+glufosinate+clethodim+dra2"))
 ```
 
 
 
 ```{r}
-data1 %>% 
-  filter(orifice_size == "0.4") %>% 
-  mutate(is_water = if_else(solution_name == "water", TRUE, FALSE)) %>% 
-  mutate(solution_name = reorder_within(solution_name, 
-                                 by = .pred, 
-                                 within = nozzle)) %>% 
-  ggplot(aes(x = solution_name, y = .pred, color = is_water)) +
+data4 %>% 
+  filter(orifice_size == "0.4" & pressure == "40") %>% 
+  ggplot(aes(x = solution_name, y = .pred)) +
   geom_point() +
-  scale_x_reordered() +
-  scale_y_continuous(limits = c(0, 5)) +
+  geom_point(aes(size = driftable), alpha = 0.4, color = "blue") +
+  scale_x_discrete(limits = rev) +
   geom_errorbar(aes(ymin = .pred_lower, 
                     ymax = .pred_upper),
                 width = .2) +
   scale_color_manual(values = c("black", "red")) +
-  facet_wrap(~ nozzle, scales = "free") + 
+  facet_grid(~ nozzle) + 
   coord_flip() +
-  theme_bw() +
-  labs(y = "", x = "",
-    title = "Percent of drifable fines (< 200) at 40 psi and orifice size = 0.4") +
-  theme(legend.position = "none",
-        plot.title = element_text(size = 20)) +
-  ggsave("figure.png", width = 16, height = 8)
+  theme_bw() + 
+  labs(y = "", x = "", size = expression(paste("% of predicted difable fines (> 200 ", mu, "m)")), 
+    title = "DV50 of herbicide solutions at 40 psi and orifice size = 0.4") +
+  theme(legend.position = "bottom",
+        legend.title = element_text(size = 13, face = "bold"),
+        plot.title = element_text(size = 20),
+        axis.text.y = element_markdown(size = 12),
+        axis.text.x = element_text(size = 11, angle = 45,
+                                   hjust = 1,
+                                   vjust = 1),
+        strip.text = element_markdown(size = 13, face = "bold")) +
+  ggsave("figure.pdf", width = 16, height = 8)
 ```
 
