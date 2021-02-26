@@ -1,15 +1,13 @@
 ---
-title: "wind_tunnel" 
+title: "wind_tunnel2"
 author: "Maxwel Coura Oliveira"
-date: "2/22/2021"
+date: "2/26/2021"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
-
-
 
 ```{r}
 library(tidyverse)
@@ -18,13 +16,7 @@ library(ggtext)
 library(tidytext)
 library(ggthemes)
 library(broom)
-```
-
-```{r}
-data %>% 
-  distinct(nozzle, orifice_size) %>% 
-  filter(!nozzle %in%  c("AI110", "TADF")) %>% 
-  filter(orifice_size == "0.3")
+library(patchwork)
 ```
 
 
@@ -33,21 +25,6 @@ data <- read.csv("windtunnel_data.csv") %>%
   janitor::clean_names() %>% 
   mutate_if(is_character, as_factor) %>% 
   mutate(orifice_size = as_factor(orifice_size))
-```
-
-
-```{r}
-data %>% 
-  filter(!nozzle %in%  c("AI110", "TADF")) %>% 
-  distinct(nozzle, solution_name)
-```
-
-
-```{r}
-data1 <- data %>% 
- filter(!nozzle %in%  c("AI110", "TADF")) %>% 
- group_by(nozzle) %>% 
- nest()
 ```
 
 
@@ -60,130 +37,48 @@ lm_mod <-
 # Drifable fines
 
 ```{r}
-lm_fit_drift <- function(df) {
+lm_fit_drift <-
   lm_mod %>% 
-  fit(fines_200 ~ solution_name * orifice_size * pressure, data = df)
-}
+  fit(fines_200 ~ nozzle * solution_name * orifice_size * pressure, data = data)
 ```
 
 # dv50
 
 ```{r}
-lm_fit_dv <- function(df) {
+lm_fit_dv <- 
   lm_mod %>% 
-  fit(dv50 ~ solution_name * orifice_size * pressure, data = df)
-}
+  fit(dv50 ~ nozzle * solution_name * orifice_size * pressure, data = data)
+
 ```
 
 
-```{r}
-data2 <- data1 %>% 
-  mutate(drift_mod = map(data, lm_fit_drift),
-         tidy_drift = map(drift_mod, tidy),
-         glance_drift = map(drift_mod, glance),
-         dv_mod = map(data, lm_fit_dv ),
-         tidy_dv = map(dv_mod, tidy),
-         glance_dv = map(dv_mod, glance))
-```
-
-
-## need to predcit the models
 ```{r}
 new_points <- expand.grid(pressure = 40,
                           solution_name = unique(data$solution_name),
-                        orifice_size = "0.3") %>% 
+                        orifice_size = c("0.3", "0.4"),
+                        nozzle = unique(data$nozzle)) %>% 
   mutate(sol_number = as.numeric(solution_name)) %>% 
   dplyr::select(sol_number, solution_name, everything()) 
 ```
 
 
-
-```{r ai80}
-AI80_mod <- data2$dv_mod[[1]]
-
-AI80_pred <- predict(AI80_mod, new_data = new_points)
-
-AI80_conf_int <- predict(AI80_mod, 
-                         new_data = new_points, 
-                         type = "conf_int")
-
-AI80_data <- 
-  new_points %>% 
-  bind_cols(AI80_pred) %>% 
-  bind_cols(AI80_conf_int) %>% 
-  mutate(nozzle = "AI80")
-```
-
-
-```{r tadfd}
-TADFD_mod <- data2$dv_mod[[2]]
-
-TADFD_pred <- predict(TADFD_mod, new_data = new_points)
-
-TADFD_conf_int <- predict(TADFD_mod, 
-                         new_data = new_points, 
-                         type = "conf_int")
-
-TADFD_data <- 
-  new_points %>% 
-  bind_cols(TADFD_pred) %>% 
-  bind_cols(TADFD_conf_int) %>% 
-  mutate(nozzle = "TADFD")
-```
-
-
-```{r tdxld}
-TDXLD_mod <- data2$dv_mod[[3]]
-
-TDXLD_pred <- predict(TDXLD_mod, new_data = new_points)
-
-TDXLD_conf_int <- predict(TDXLD_mod, 
-                         new_data = new_points, 
-                         type = "conf_int")
-
-TDXLD_data <- 
-  new_points %>% 
-  bind_cols(TDXLD_pred) %>% 
-  bind_cols(TDXLD_conf_int) %>% 
-  mutate(nozzle = "TDXLD")
-```
-
-
-```{r tdxld}
-ULD_mod <- data2$dv_mod[[4]]
-
-ULD_pred <- predict(ULD_mod, new_data = new_points)
-
-ULD_conf_int <- predict(TDXLD_mod, 
-                         new_data = new_points, 
-                         type = "conf_int")
-
-ULD_data <- 
-  new_points %>% 
-  bind_cols(ULD_pred) %>% 
-  bind_cols(ULD_conf_int) %>% 
-  mutate(nozzle = "ULD")
-```
-
 ```{r}
-new_points <- expand.grid(pressure = 40,
-                          solution_name = unique(data$solution_name),
-                        orifice_size = "0.4",
-                        nozzle = unique(data$nozzle)) %>% 
-  mutate(sol_number = as.numeric(solution_name)) %>% 
-  dplyr::select(sol_number, solution_name, everything()) %>% 
-  filter(!nozzle %in%  c("AI110", "TADF"))
+#Getting predited values
+mean_pred_drift <- predict(lm_fit_drift, new_data = new_points)
+mean_pred_dv <- predict(lm_fit_dv, new_data = new_points)
 ```
-
-
-
-
 
 
 ```{r}
-category <- data %>% 
-  distinct(solution_name, nozzle, pressure, orifice_size) %>% 
-  filter(orifice_size == "0.4" & pressure == 40)
+#Getting conf intervals
+conf_int_pred_drift <- predict(lm_fit_drift, 
+                         new_data = new_points, 
+                         type = "conf_int")
+
+
+conf_int_pred_dv <- predict(lm_fit_dv, 
+                         new_data = new_points, 
+                         type = "conf_int")
 ```
 
 ```{r}
@@ -197,17 +92,44 @@ data2 <-
   bind_cols(mean_pred_dv) %>% 
   bind_cols(conf_int_pred_dv)
 
+category <- data %>% 
+  distinct(solution_name, nozzle, orifice_size, pressure, category)
+
 data3 <- data1 %>% 
   dplyr::select(.pred) %>% 
   rename(driftable = .pred) %>% 
   bind_cols(data2) %>% 
   filter(orifice_size == "0.4" & pressure == 40) %>% 
+  filter(nozzle %in% c("ULD")) %>% 
   left_join(category)
+
+data4 <- data1 %>% 
+  dplyr::select(.pred) %>% 
+  rename(driftable = .pred) %>% 
+  bind_cols(data2) %>% 
+  filter(orifice_size == "0.3" & pressure == 40) %>% 
+  filter(nozzle %in% c("AI80", "AI110", "TADFD", "TDXLD", "TTI"))  %>% 
+  left_join(category) %>% 
+  bind_rows(data3)
 ```
 
 
 ```{r}
-data4 <- data3 %>% 
+category <- data %>% 
+  distinct(solution_name, nozzle, orifice_size, pressure, category) 
+```
+
+
+```{r}
+data %>% 
+  distinct(nozzle, orifice_size) %>% 
+  filter(orifice_size == "0.3")
+```
+
+
+
+```{r}
+data5 <- data4 %>% 
          mutate(solution_name = fct_relevel(solution_name, 
                                   levels = c("water", 
                                              "glyphosate", 
@@ -249,22 +171,21 @@ data4 <- data3 %>%
 
 
 ```{r}
-data4 %>% 
-  filter(orifice_size == "0.4" & pressure == "40") %>% 
+f1 <- data5 %>% 
+  filter(orifice_size == "0.3" & pressure == "40") %>% 
   ggplot(aes(x = solution_name, y = .pred, color = category)) +
   geom_point() +
+  facet_grid(orifice_size ~ nozzle) +
   geom_point(aes(size = driftable), alpha = 0.4) +
-#  geom_point(data = data, mapping = aes(x = solution_name, y = .pred,  color = category)) +
+  scale_size_continuous(limits = c(1, 6), breaks=c(1, 2, 3, 4, 5, 6)) +
   scale_x_discrete(limits = rev) +
   geom_errorbar(aes(ymin = .pred_lower, 
                     ymax = .pred_upper),
                 width = .2) +
-#  scale_color_manual(values = c("black", "red")) +
-  facet_grid(~ nozzle) + 
   coord_flip() +
   theme_bw() + 
-  labs(y = "", x = "", size = expression(paste("% of predicted difable fines (> 200 ", mu, "m)")), 
-    title = "DV50 of herbicide solutions at 40 psi and orifice size = 0.4") +
+  labs(y = "", x = "", size = expression(paste("% of predicted difable fines (< 200 ", mu, "m)")), 
+    title = "") +
   theme(legend.position = "bottom",
         legend.title = element_text(size = 13, face = "bold"),
         plot.title = element_text(size = 20),
@@ -274,5 +195,44 @@ data4 %>%
                                    vjust = 1),
         strip.text = element_markdown(size = 13, face = "bold")) +
   ggsave("figure.pdf", width = 16, height = 8)
+```
+
+
+```{r}
+f2 <- data5 %>% 
+  filter(orifice_size == "0.4" & pressure == "40") %>% 
+  ggplot(aes(x = solution_name, y = .pred, color = category)) +
+  geom_point() +
+  facet_grid(orifice_size ~ nozzle) +
+  geom_point(aes(size = driftable), alpha = 0.4) +
+  scale_x_discrete(limits = rev) +
+  scale_size_continuous(limits = c(1, 6), breaks=c(1, 2, 3, 4, 5, 6)) +
+  geom_errorbar(aes(ymin = .pred_lower, 
+                    ymax = .pred_upper),
+                width = .2) +
+  coord_flip() +
+  theme_bw() + 
+  labs(y = "", x = "", size = expression(paste("% of predicted difable fines (< 200 ", mu, "m)")), 
+    title = "") +
+  theme(legend.position = "bottom",
+        legend.title = element_text(size = 13, face = "bold"),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(size = 11, angle = 45,
+                                   hjust = 1,
+                                   vjust = 1),
+        strip.text = element_markdown(size = 13, face = "bold")) +
+  ggsave("figure2.pdf", height = 8, width = 3.2)
+```
+
+
+```{r}
+library(ggpubr)
+ggarrange(f1, f2, nrow=1, common.legend = TRUE, legend="bottom") +
+  ggsave("Figura_3.pdf", width = 15, height = 7, dpi = 600)
+```
+
+
+```{r}
+f1 + f2
 ```
 
