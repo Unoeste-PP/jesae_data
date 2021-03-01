@@ -23,7 +23,6 @@ library(broom)
 ```{r}
 data %>% 
   distinct(nozzle, orifice_size) %>% 
-  filter(!nozzle %in%  c("AI110", "TADF")) %>% 
   filter(orifice_size == "0.3")
 ```
 
@@ -149,21 +148,6 @@ TDXLD_data <-
 ```
 
 
-```{r tdxld}
-ULD_mod <- data2$dv_mod[[4]]
-
-ULD_pred <- predict(ULD_mod, new_data = new_points)
-
-ULD_conf_int <- predict(TDXLD_mod, 
-                         new_data = new_points, 
-                         type = "conf_int")
-
-ULD_data <- 
-  new_points %>% 
-  bind_cols(ULD_pred) %>% 
-  bind_cols(ULD_conf_int) %>% 
-  mutate(nozzle = "ULD")
-```
 
 ```{r}
 new_points <- expand.grid(pressure = 40,
@@ -176,8 +160,24 @@ new_points <- expand.grid(pressure = 40,
 ```
 
 
+```{r}
+#Getting predited values
+mean_pred_drift <- predict(lm_fit_drift, new_data = new_points)
+mean_pred_dv <- predict(lm_fit_dv, new_data = new_points)
+```
 
 
+```{r}
+#Getting conf intervals
+conf_int_pred_drift <- predict(lm_fit_drift, 
+                         new_data = new_points, 
+                         type = "conf_int")
+
+
+conf_int_pred_dv <- predict(lm_fit_dv, 
+                         new_data = new_points, 
+                         type = "conf_int")
+```
 
 
 ```{r}

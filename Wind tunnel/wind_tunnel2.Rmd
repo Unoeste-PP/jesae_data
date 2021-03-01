@@ -55,7 +55,7 @@ lm_fit_dv <-
 ```{r}
 new_points <- expand.grid(pressure = 40,
                           solution_name = unique(data$solution_name),
-                        orifice_size = c("0.3", "0.4"),
+                        orifice_size = c("0.3", "0.4", "0.5", "0.6"),
                         nozzle = unique(data$nozzle)) %>% 
   mutate(sol_number = as.numeric(solution_name)) %>% 
   dplyr::select(sol_number, solution_name, everything()) 
@@ -93,43 +93,21 @@ data2 <-
   bind_cols(conf_int_pred_dv)
 
 category <- data %>% 
+  filter(pressure == 40) %>% 
   distinct(solution_name, nozzle, orifice_size, pressure, category)
 
 data3 <- data1 %>% 
   dplyr::select(.pred) %>% 
   rename(driftable = .pred) %>% 
   bind_cols(data2) %>% 
-  filter(orifice_size == "0.4" & pressure == 40) %>% 
-  filter(nozzle %in% c("ULD")) %>% 
-  left_join(category)
-
-data4 <- data1 %>% 
-  dplyr::select(.pred) %>% 
-  rename(driftable = .pred) %>% 
-  bind_cols(data2) %>% 
-  filter(orifice_size == "0.3" & pressure == 40) %>% 
-  filter(nozzle %in% c("AI80", "AI110", "TADFD", "TDXLD", "TTI"))  %>% 
   left_join(category) %>% 
-  bind_rows(data3)
-```
-
-
-```{r}
-category <- data %>% 
-  distinct(solution_name, nozzle, orifice_size, pressure, category) 
-```
-
-
-```{r}
-data %>% 
-  distinct(nozzle, orifice_size) %>% 
-  filter(orifice_size == "0.3")
+  filter(!is.na(category))
 ```
 
 
 
 ```{r}
-data5 <- data4 %>% 
+data4 <- data3 %>% 
          mutate(solution_name = fct_relevel(solution_name, 
                                   levels = c("water", 
                                              "glyphosate", 
@@ -170,69 +148,85 @@ data5 <- data4 %>%
 
 
 
+
+```{r message = FALSE, warning=FALSE}
+library(extrafont)
+library(ggtext)
+#extrafont::loadfonts()
+
+font_family <- 'Helvetica'
+title_family <- "Arial Black"
+legend_family <- "Comic Sans MS"
+subtitle_family = "Arial"
+background <- "#1D1D1D"
+text_colour <- "white"
+axis_colour <- "white"
+plot_colour <- "white"
+
+theme_style <- theme(axis.text.x = element_text(angle = 45, hjust = 1, 
+                                                size = 12, color = "black",
+                                                family = subtitle_family),
+        axis.text.y = element_text(size = 12, family = subtitle_family, color = "black"),
+        axis.title.x = element_text(size = 13, face = "bold",  family = subtitle_family),
+        plot.title.position = "plot",
+        plot.title = element_markdown(vjust = 2, size = 20, 
+                                  family = subtitle_family, margin = margin(2,1,1,1)),
+        plot.subtitle = element_markdown(vjust = 2, size = 12, family = subtitle_family),
+        plot.caption = element_text(size = 9, family = subtitle_family, hjust = 0),
+        axis.ticks.x = element_blank(),
+        legend.text = element_text(family = subtitle_family),
+        legend.title = element_markdown(family = subtitle_family, size =12, face = "bold"),
+        legend.position = "bottom",
+        legend.box = "horizontal",
+        legend.direction = "horizontal",
+        legend.background = element_blank(),
+        legend.box.background = element_blank(),
+        legend.key = element_blank(),
+        panel.background = element_rect(fill = plot_colour),
+        plot.background = element_rect(fill = plot_colour),
+        strip.text = element_markdown(size = 13, face = "bold"))
+
+theme_set(theme_bw() + theme_style)
+```
+
+expression(paste("% of predicted drifable fines (< 200 ", mu, "m)"))
+
 ```{r}
-f1 <- data5 %>% 
-  filter(orifice_size == "0.3" & pressure == "40") %>% 
+library(ggtext)
+f1 <- data4 %>% 
+  filter(pressure == "40") %>% 
   ggplot(aes(x = solution_name, y = .pred, color = category)) +
-  geom_point() +
-  facet_grid(orifice_size ~ nozzle) +
+  geom_point(size = 1) +
+  facet_grid(nozzle ~ orifice_size) +
   geom_point(aes(size = driftable), alpha = 0.4) +
-  scale_size_continuous(limits = c(1, 6), breaks=c(1, 2, 3, 4, 5, 6)) +
+  scale_size_continuous(
+                        limits = c(1, 6), breaks=c(1, 2, 3, 4, 5, 6),
+                        guide = guide_legend(title.position = "top", nrow = 1)) +
   scale_x_discrete(limits = rev) +
+  scale_color_manual(name = "Nozzle category", values = c("red", "blue"),
+                        guide = guide_legend(title.position = "top", nrow = 1)) +
   geom_errorbar(aes(ymin = .pred_lower, 
                     ymax = .pred_upper),
                 width = .2) +
+  labs(x = "", y = "dv50", title = "TEST &mu;",
+       size = "of predicted drifable fines (< 200 μm)") +
   coord_flip() +
-  theme_bw() + 
-  labs(y = "", x = "", size = expression(paste("% of predicted difable fines (< 200 ", mu, "m)")), 
-    title = "") +
-  theme(legend.position = "bottom",
-        legend.title = element_text(size = 13, face = "bold"),
-        plot.title = element_text(size = 20),
-        axis.text.y = element_markdown(size = 12),
-        axis.text.x = element_text(size = 11, angle = 45,
-                                   hjust = 1,
-                                   vjust = 1),
-        strip.text = element_markdown(size = 13, face = "bold")) +
-  ggsave("figure.pdf", width = 16, height = 8)
+  ggsave("figure.pdf", width = 14, height = 18)
 ```
 
 
+
 ```{r}
-f2 <- data5 %>% 
-  filter(orifice_size == "0.4" & pressure == "40") %>% 
-  ggplot(aes(x = solution_name, y = .pred, color = category)) +
+library(ggplot2)
+
+ggplot(mtcars) +
+  aes(mpg, disp) +
   geom_point() +
-  facet_grid(orifice_size ~ nozzle) +
-  geom_point(aes(size = driftable), alpha = 0.4) +
-  scale_x_discrete(limits = rev) +
-  scale_size_continuous(limits = c(1, 6), breaks=c(1, 2, 3, 4, 5, 6)) +
-  geom_errorbar(aes(ymin = .pred_lower, 
-                    ymax = .pred_upper),
-                width = .2) +
-  coord_flip() +
-  theme_bw() + 
-  labs(y = "", x = "", size = expression(paste("% of predicted difable fines (< 200 ", mu, "m)")), 
-    title = "") +
-  theme(legend.position = "bottom",
-        legend.title = element_text(size = 13, face = "bold"),
-        axis.text.y = element_blank(),
-        axis.text.x = element_text(size = 11, angle = 45,
-                                   hjust = 1,
-                                   vjust = 1),
-        strip.text = element_markdown(size = 13, face = "bold")) +
-  ggsave("figure2.pdf", height = 8, width = 3.2)
-```
-
-
-```{r}
-library(ggpubr)
-ggarrange(f1, f2, nrow=1, common.legend = TRUE, legend="bottom") +
-  ggsave("Figura_3.pdf", width = 15, height = 7, dpi = 600)
-```
-
-
-```{r}
-f1 + f2
+  labs(title = "TEST μ",
+       x = "*abc* α",
+       y = "**bold β**") +
+  theme(plot.title = element_markdown(),
+        axis.title.x = element_markdown(),
+        axis.title.y = element_markdown())
 ```
 
