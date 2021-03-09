@@ -1,0 +1,65 @@
+---
+title: "slopes"
+author: "Maxwel Coura Oliveira"
+date: "3/8/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(ggtext)
+library(tidytext)
+library(ggthemes)
+library(broom)
+```
+
+
+```{r}
+data <- read.csv("windtunnel_data.csv") %>% 
+  janitor::clean_names() %>% 
+  mutate_if(is_character, as_factor) %>% 
+  mutate(orifice_size = as_factor(orifice_size))
+```
+
+```{r}
+data1 <- data %>% 
+  group_by(solution_name, nozzle, orifice_size) %>% 
+  nest()
+```
+
+
+```{r linear-model}
+lm_mod <- 
+  linear_reg() %>% 
+  set_engine("lm")
+```
+
+
+```{r function}
+lm_fit_function <- function(df) {
+  lm_mod %>% 
+  fit(dv50 ~ pressure, data = df)
+}
+```
+
+
+```{r}
+data2 <- data1 %>% 
+  mutate(model = map(data, lm_fit_function),
+         tidy = map(model, tidy))
+```
+
+
+```{r}
+data2 %>% 
+  unnest(tidy)
+```
+
+
+
+
