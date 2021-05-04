@@ -1,0 +1,232 @@
+---
+title: "RF1_Patternator"
+author: "Jesaelen"
+date: "3/25/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(parsnip)
+library(tidymodels)
+library(vctrs)
+library(hardhat)
+library(tidyverse)
+library(ggplot2)
+library(RColorBrewer)
+library(tidyr)
+library(doParallel)
+library(ranger)
+library(vip)
+library(RCurl)
+library(purrr)
+```
+
+```{r}
+data <- read_csv("rf_parameters1.csv") %>% 
+  mutate_if(is_character, as_factor) %>% 
+  janitor::clean_names() %>% 
+  mutate(spray_solution = as_factor(spray_solution)) # your solution needs to be a factor
+data
+```
+
+```{r}
+data %>% 
+  ggplot(aes(x = nozzle_spacing, y = cv, 
+             color = factor(operating_pressure))) +
+  geom_point() +
+  facet_grid(~ nozzle_type) +
+  coord_flip()
+```
+
+
+
+
+```{r}
+set.seed(123)
+s1_split <- initial_split(data, strata = cv) 
+s1_train <- training(s1_split)
+s1_test <- testing(s1_split)
+
+set.seed(245)
+
+s1_boot <- bootstraps(s1_train)
+s1_boot
+```
+
+```{r}
+set.seed(123)
+#Build recipe
+s1_rec <- recipe(cv ~ ., data=s1_train) %>% 
+  step_dummy(all_nominal(), -all_outcomes()) %>% # need to use nominal values as dummy variables
+  #update_role(spray_solution, new_role = "ID") 
+summary(s1_rec) # listing your predictors and outcome
+
+#preprocessing
+prepped_rec <- prep(s1_rec, verbose = TRUE, retain = TRUE )
+
+# new data set with juice
+juice <- juice(prepped_rec)
+
+# bake to see the preprocessed training data
+preproc_train <- recipes::bake(prepped_rec, new_data = NULL)
+glimpse(preproc_train)
+
+# bake to see the preprocessed testing data
+baked_test <- recipes::bake(prepped_rec, new_data = s1_test)
+glimpse(baked_test)
+```
+
+
+```{r}
+# Model specification
+#Build model # Random forest with ranger engine
+tune_spec <- rand_forest(mtry=tune(), trees=1000, min_n=tune()) %>% 
+  set_mode("regression") %>%
+  set_engine("ranger") 
+
+#Build your workflow - Fitting your model
+tune_wf <- workflow() %>%
+  add_recipe(s1_rec) %>% # add the recipe training  data
+  add_model(tune_spec) # and the random forest model
+```
+
+
+
+```{r}
+# tuning parameterts mtry and min_n
+set.seed(123)
+s1_folds <- vfold_cv(s1_train)
+
+doParallel::registerDoParallel() # in case you have a big datset
+
+set.seed(564)
+tune_res <- tune_grid(tune_wf, resamples = s1_folds, grid = 20) 
+```
+
+
+
+
+```{r}
+set.seed(123)
+tune_res %>%
+  select_best("rmse") # sqrt of variance - measured your model fit
+
+# results showed the best parameters for your model (mtry and min_n)
+```
+
+```{r}
+# Checking the tuning parameters with visualization
+set.seed(123)
+tune_res %>%
+  collect_metrics() %>% 
+  filter(.metric =="rmse") %>% 
+  pivot_longer(min_n:mtry, values_to="value", 
+               names_to="parameter") %>% 
+  ggplot(aes(value, mean, color=parameter)) +
+  geom_point(show.legend=FALSE) +
+  facet_wrap(~ parameter)
+```
+
+
+```{r}
+# Tune again using grid_regular
+# Select the higher values range based on the previous figure
+set.seed(123)
+rf_grid <- grid_regular(mtry(range=c(1,20)), 
+                        min_n(range=c(10,40)), levels=5)  
+
+
+set.seed(445)
+regular_res <- tune_grid(tune_wf, resamples = s1_folds, 
+                         grid = rf_grid) 
+
+regular_res %>%
+  select_best("rmse") 
+```
+
+```{r}
+#Visualize again
+regular_res %>%
+  collect_metrics() %>%
+  filter(.metric =="rmse") %>% 
+  mutate(min_n = factor(min_n)) %>% 
+  ggplot(aes(mtry, mean, color = min_n)) +
+  geom_line(alpha=0.5, size=1.5) +
+  geom_point()
+```
+
+
+
+```{r}
+# Finalize model
+set.seed(123)
+
+best_rmse <- select_best(regular_res, "rmse")
+final_rf <- finalize_model(tune_spec, best_rmse)
+```
+
+
+
+
+
+```{r}
+final_rf %>%
+  set_engine("ranger", importance= "permutation") %>% 
+  fit(cv ~ ., data = juice(prepped_rec)) %>% # I believe you need to use your 'test' data here
+  #Dot plot
+  vip(geom="point", horizontal=TRUE, aesthetics=list(color="black", size=3)) + 
+  theme_light() + 
+  theme(plot.title = element_text(hjust=0.5, size=35, face="bold"),
+                     axis.title.x = element_text(size=20, color="black"), 
+                     legend.title = element_blank(),
+                     axis.text.x = element_text(size=15, color="black"),
+                     axis.text.y = element_text(size=15, hjust=0, color="black"),
+                     strip.text.x = element_text(size=25, color="black", face="bold"),
+                     strip.text = element_text(size=13), 
+                     panel.background =element_rect(fill="white"),
+                     panel.grid.major=element_line(color="white"),
+                     panel.grid.minor=element_line(color="white")) +
+  labs(y="Variable Importance") 
+```
+
+
+```{r}
+final_rf2 <- workflow() %>%
+  add_recipe(s1_rec) %>% # add the recipe training  data
+  add_model(final_rf)
+
+final_res <- final_rf2 %>% 
+  last_fit(s1_split)
+
+final_res %>% 
+  collect_metrics()
+```
+
+
+```{r}
+final_res %>% 
+  collect_predictions() %>% 
+  ggplot(aes(x = cv, y = .pred)) +
+  geom_point(color = "midnightblue") +
+  geom_abline(lty = 2, color = "red")
+```
+
+
+```{r}
+# same for your plot
+finall <- final_rf %>%
+  set_engine("ranger", importance= "permutation") %>% 
+  fit(cv ~ ., data = juice(prepped_rec)) # use juice prep
+
+
+
+finall$fit$variable.importance
+```
+
+# Check this if you want to use permutation or impurity
+
+https://notast.netlify.app/post/explaining-predictions-random-forest-post-hoc-analysis-permutation-impurity-variable-importance/
